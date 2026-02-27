@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>My Pizza Tower Port</title>
+    <style>
+        body { background-color: #000; margin: 0; overflow: hidden; color: white; font-family: sans-serif; text-align: center; }
+        #canvas { width: 100vw; height: 100vh; display: block; }
+        .loading-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 300px; }
+        .bar-bg { width: 100%; height: 10px; background: #222; border-radius: 5px; margin-top: 10px; }
+        .bar-fill { width: 0%; height: 100%; background: #ff4444; border-radius: 5px; transition: width 0.2s; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+    <div class="loading-ui" id="loader">
+        <div id="status">Waking up Peppino...</div>
+        <div class="bar-bg"><div id="bar" class="bar-fill"></div></div>
+    </div>
+
+    <script>
+        // CHANGE THESE TWO LINES
+        const USER = "YOUR_USERNAME"; 
+        const REPO = "YOUR_REPO_NAME";
+        const BASE_URL = `https://cdn.jsdelivr.net/gh/${USER}/${REPO}@main/`;
+
+        async function loadGame() {
+            const status = document.getElementById('status');
+            const bar = document.getElementById('bar');
+            let parts = [];
+
+            try {
+                for (let i = 1; i <= 13; i++) {
+                    status.innerText = `Grabbing Ingredients... (${i}/13)`;
+                    const res = await fetch(`${BASE_URL}game.unx.part${i}`);
+                    if (!res.ok) throw new Error("Delivery Failed");
+                    parts.push(await res.arrayBuffer());
+                    bar.style.width = `${(i / 13) * 100}%`;
+                }
+
+                status.innerText = "Baking Pizza...";
+                const fullGame = new Blob(parts, { type: 'application/octet-stream' });
+                const gameUrl = URL.createObjectURL(fullGame);
+
+                // Override Fetch so the engine finds the merged file
+                const oldFetch = window.fetch;
+                window.fetch = (url, config) => {
+                    if (typeof url === 'string' && url.includes("game.unx")) {
+                        return Promise.resolve(new Response(fullGame));
+                    }
+                    return oldFetch(url, config);
+                };
+
+                // Load the actual engine scripts
+                const scripts = ["index.js", "runner.js"];
+                for (let s of scripts) {
+                    await new Promise(r => {
+                        let sc = document.createElement("script");
+                        sc.src = BASE_URL + s;
+                        sc.onload = r;
+                        document.body.appendChild(sc);
+                    });
+                }
+
+                setTimeout(() => document.getElementById('loader').remove(), 2000);
+            } catch (e) {
+                status.innerText = "Error: Kitchen is closed (403/404)";
+                console.error(e);
+            }
+        }
+        loadGame();
+    </script>
+</body>
+</html>
