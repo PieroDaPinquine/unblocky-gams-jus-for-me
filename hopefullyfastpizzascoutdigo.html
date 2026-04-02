@@ -1,169 +1,134 @@
 <!DOCTYPE html>
 <html lang="en-us">
-  <head>
+<head>
     <base href="https://cdn.jsdelivr.net/gh/web-ports/scoutdingo@main/">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
-    <link rel="icon" type="x-icon" href="favicon.png">
-    <title>Pizza Tower: Scoutdigo Mod (Ultra Smooth)</title>
-    
+    <title>Pizza Tower: Scoutdigo (Smooth Fix)</title>
     <style>
-      body {
-        margin: 0;
-        background-color: black;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        overflow: hidden;
-        touch-action: none; 
-        /* Force GPU Layering */
-        -webkit-transform: translateZ(0);
-        transform: translateZ(0);
-      }
+        body {
+            margin: 0; background: black; overflow: hidden;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; touch-action: none;
+        }
 
-      canvas.emscripten {
-        display: none; /* Hidden until loaded */
-        background-color: black;
-        image-rendering: pixelated;
-        -webkit-optimize-contrast;
-        will-change: transform, opacity;
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        outline: none;
-      }
+        /* The Game Screen */
+        canvas.emscripten {
+            display: none;
+            image-rendering: pixelated;
+            -webkit-optimize-contrast;
+            max-width: 100%; max-height: 100%;
+            object-fit: contain;
+            outline: none;
+            /* GPU Acceleration */
+            transform: translateZ(0);
+        }
 
-      #loader-ui {
-        text-align: center;
-        color: white;
-        font-family: 'Courier New', Courier, monospace;
-      }
+        /* Loading UI */
+        #loading-overlay {
+            text-align: center; color: white; font-family: sans-serif;
+        }
 
-      .spinner {
-        height: 40px;
-        width: 40px;
-        margin: 10px auto;
-        animation: rotation 0.8s linear infinite;
-        border: 4px solid #bdff00;
-        border-top: 4px solid transparent;
-        border-radius: 50%;
-      }
+        .spinner-fancy {
+            width: 50px; height: 50px; margin: 20px auto;
+            border: 5px solid #333; border-top: 5px solid #bdff00;
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
 
-      @keyframes rotation { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-      .output-container {
-        position: absolute;
-        bottom: 15px;
-        display: flex;
-        gap: 10px;
-        opacity: 0.4;
-        transition: opacity 0.3s;
-      }
-      .output-container:hover { opacity: 1; }
-      .btn {
-        background: #1a1a1a;
-        color: #bdff00;
-        border: 1px solid #bdff00;
-        padding: 8px 15px;
-        cursor: pointer;
-        font-size: 12px;
-        text-transform: uppercase;
-        border-radius: 4px;
-      }
+        /* Performance Footer */
+        .controls {
+            position: absolute; bottom: 10px; opacity: 0.3; transition: 0.3s;
+        }
+        .controls:hover { opacity: 1; }
+        .btn {
+            background: #222; color: #bdff00; border: 1px solid #bdff00;
+            padding: 5px 15px; cursor: pointer; border-radius: 4px;
+        }
+
+        /* Hiding the elements index.js looks for without deleting them */
+        #status, #progress, #spinner { display: none !important; }
     </style>
-  </head>
-  <body>
+</head>
+<body>
 
-    <div id="loader-ui">
-      <div class="spinner"></div>
-      <div id="loading-text">CONNECTING TO SERVER...</div>
+    <div id="loading-overlay">
+        <div class="spinner-fancy"></div>
+        <div id="custom-status" style="font-size: 18px; letter-spacing: 2px;">PREPARING PIZZA...</div>
     </div>
+
+    <div id="status"></div>
+    <progress id="progress" value="0" max="100"></progress>
+    <div id="spinner"></div>
 
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
 
-    <div class="output-container">
-      <button class="btn" onclick="toggleFullscreen()">Fullscreen</button>
-      <button class="btn" onclick="location.reload()">Reload</button>
+    <div class="controls">
+        <button class="btn" onclick="toggleFullscreen()">FULLSCREEN</button>
     </div>
 
     <script>
-      // 1. FIX: Define toggleFullscreen in the global scope immediately
-      function toggleFullscreen() {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(err => {
-            alert(`Error attempting to enable full-screen mode: ${err.message}`);
-          });
-        } else {
-          document.exitFullscreen();
+        // Global functions for the engine
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+            else document.exitFullscreen();
         }
-      }
 
-      const loadingText = document.querySelector("#loading-text");
-      const loaderUI = document.querySelector("#loader-ui");
-      const canvas = document.querySelector("#canvas");
-      
-      let totalBytes = 315181892;
-      let loadedBytes = 0;
-
-      async function fetchWithProgress(url) {
-        // Adding mode 'cors' and credentials to prevent Tracking Prevention blocks
-        const response = await fetch(url, { mode: 'cors' });
-        const reader = response.body.getReader();
-        let chunks = [];
-        let received = 0;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          received += value.length;
-          loadedBytes += value.length;
-          chunks.push(value);
-          
-          const percent = ((loadedBytes / totalBytes) * 100).toFixed(1);
-          loadingText.textContent = `LOADING DATA: ${percent}%`;
-        }
+        const customStatus = document.getElementById('custom-status');
+        const canvas = document.getElementById('canvas');
+        const overlay = document.getElementById('loading-overlay');
         
-        return new Blob(chunks);
-      }
+        let totalBytes = 315181892;
+        let loadedBytes = 0;
 
-      (async () => {
-        try {
-          const parts = Array.from({length: 16}, (_, i) => `game.unx.part${i + 1}`);
-          const blobs = await Promise.all(parts.map(fetchWithProgress));
-          window.gameUnxUrl = URL.createObjectURL(new Blob(blobs));
+        async function fetchWithProgress(url) {
+            const response = await fetch(url);
+            const reader = response.body.getReader();
+            let chunks = [];
+            let received = 0;
 
-          // Intercept XHR and Fetch for the engine
-          const originalFetch = window.fetch;
-          window.fetch = async (...args) => {
-            let [url] = args;
-            if (typeof url === 'string' && url.includes("game.unx")) {
-              return originalFetch(window.gameUnxUrl);
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+                loadedBytes += value.length;
+
+                let percent = ((loadedBytes / totalBytes) * 100).toFixed(0);
+                customStatus.textContent = `LOADING: ${percent}%`;
             }
-            return originalFetch(...args);
-          };
-
-          // Clean up UI and trigger scripts
-          loaderUI.style.display = "none";
-          canvas.style.display = "block";
-          
-          const idx = document.createElement("script"); 
-          idx.src = "index.js"; 
-          idx.crossOrigin = "anonymous";
-          
-          const run = document.createElement("script"); 
-          run.src = "runner.js"; 
-          run.crossOrigin = "anonymous";
-
-          document.body.appendChild(idx);
-          document.body.appendChild(run);
-          
-        } catch (e) {
-          loadingText.textContent = "SECURE CONNECTION BLOCKED. TRY REFRESHING.";
-          console.error(e);
+            return new Blob(chunks);
         }
-      })();
+
+        (async () => {
+            try {
+                // Fetch and merge parts
+                const parts = Array.from({length: 16}, (_, i) => `game.unx.part${i + 1}`);
+                const blobs = await Promise.all(parts.map(fetchWithProgress));
+                window.gameUnxUrl = URL.createObjectURL(new Blob(blobs));
+
+                // Intercept game fetch
+                const originalFetch = window.fetch;
+                window.fetch = (url, options) => {
+                    if (typeof url === 'string' && url.includes("game.unx")) return originalFetch(window.gameUnxUrl);
+                    return originalFetch(url, options);
+                };
+
+                // Remove loader UI once logic is ready
+                overlay.style.display = "none";
+                canvas.style.display = "block";
+
+                // Load GameMaker Scripts
+                const s1 = document.createElement('script'); s1.src = "index.js";
+                const s2 = document.createElement('script'); s2.src = "runner.js";
+                document.body.appendChild(s1);
+                document.body.appendChild(s2);
+
+            } catch (e) {
+                customStatus.textContent = "ERROR: CHECK INTERNET/BROWSER";
+            }
+        })();
     </script>
-  </body>
+</body>
 </html>
